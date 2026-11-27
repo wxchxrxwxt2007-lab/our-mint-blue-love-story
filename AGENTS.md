@@ -28,3 +28,6 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Love messages and used coupons are read/written only through server functions in `src/lib/love.functions.ts` using the admin client; tables grant nothing to anon/authenticated so the browser can never query them directly.
+- Admin access is a shared password (`ADMIN_PASSWORD` secret) checked server-side with an encrypted session cookie (`SESSION_SECRET`); there are no user accounts.

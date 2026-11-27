@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { BeretIcon, Confetti, FishIcon, OctopusIcon, PuddingIcon, StarIcon } from "./decor";
 import { TimeBoxes } from "./gates";
+import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { COUPONS } from "@/lib/coupons";
+import { listUsedCoupons, redeemCoupon, sendMessage } from "@/lib/love.functions";
 
 const SINCE = Date.parse("2026-09-29T00:00:00+07:00");
 
@@ -196,10 +200,13 @@ export function Letter() {
   const [msgs, setMsgs] = useState<string[]>([]);
   const [text, setText] = useState("");
   useEffect(() => { try { setMsgs(JSON.parse(localStorage.getItem("anniv-msgs") ?? "[]")); } catch { /* ignore */ } }, []);
-  const send = () => {
-    const t = text.trim(); if (!t) return;
-    const n = [...msgs, t]; setMsgs(n); setText("");
+  const save = useServerFn(sendMessage);
+  const [err, setErr] = useState(false);
+  const send = async () => {
+    const t = text.trim().slice(0, 500); if (!t) return;
+    const n = [...msgs, t]; setMsgs(n); setText(""); setErr(false);
     localStorage.setItem("anniv-msgs", JSON.stringify(n));
+    try { await save({ data: { message: t } }); } catch { setErr(true); }
   };
   return (
     <section className="px-5">
@@ -228,8 +235,9 @@ export function Letter() {
             <div key={i} className="anim-fade-up max-w-[80%] self-end rounded-2xl rounded-br-sm bg-turquoise px-3 py-2 text-sm text-primary-foreground">{m}</div>
           ))}
         </div>
+        {err && <p className="mb-2 text-center text-xs text-destructive">ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะ</p>}
         <div className="flex gap-2">
-          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="พิมพ์ข้อความ..." className="min-w-0 flex-1 rounded-full border-2 border-caramel bg-card px-4 py-2 text-sm outline-none" />
+          <input maxLength={500} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="พิมพ์ข้อความ..." className="min-w-0 flex-1 rounded-full border-2 border-caramel bg-card px-4 py-2 text-sm outline-none" />
           <button onClick={send} className="shrink-0 rounded-full border-2 border-caramel bg-pudding px-3 py-2 text-sm font-bold">ส่งบทพูดถึงเค้า</button>
         </div>
       </div>
@@ -237,24 +245,16 @@ export function Letter() {
   );
 }
 
-const COUPONS = [
-  { t: "คูปองต้องอยู่คุยด้วย/อยู่เพื่อน", d: "ห้ามหลับจนกว่าจะให้ไปนอน" },
-  { t: "คูปองเลี้ยงขนม", d: "ของโปรด 1 มื้อ" },
-  { t: "คูปองตามใจเธอ 1 วันเต็ม", d: "สั่งได้ทุกอย่าง" },
-  { t: "คูปองห้ามพูดคำหยาบ", d: "ห้ามพูดคำหยาบใส่กันทั้งคู่" },
-  { t: "คูปองงดงอน 1 ครั้ง", d: "ถ้าวันไหนเผลอทำตัวดื้อหรือทำให้ไม่สบายใจ กดใช้ใบนี้ปุ๊บ ต้องหายงอนและมานั่งคุยกันดีๆ ทันที" },
-  { t: "คูปองอ้อนได้ไม่อั้น", d: "สิทธิ์ขอกอด ขอหอม หรืออ้อนได้แบบไม่มีลิมิตตลอดทั้งวัน ชาร์จพลังให้เต็มหลอด" },
-  { t: "คูปองนวดผ่อนคลาย", d: "สิทธิ์นวดไหล่ นวดมือ หรือนวดเท้าให้หายเหนื่อย 30 นาทีเต็ม โดยหมอนวดส่วนตัวคนนี้" },
-  { t: "คูปองเป่าผม & ดูแลก่อนนอน", d: "ทุกครั้งที่อยู่ด้วยกัน วันไหนสระผมแล้วขี้เกียจเป่า กดใช้ใบนี้ได้เลย เค้าจะเป่าผมให้จนแห้งสนิทพร้อมส่งเข้านอนอย่างอบอุ่น" },
-  { t: "คูปองเลือกเมนูมื้อใหญ่", d: "มื้อนี้เธอเป็นคนเลือกร้าน ไม่ว่าจะชาบู หมูกระทะ หรืออาหารญี่ปุ่น เค้าตามใจทุกอย่าง" },
-];
-
 export function Coupons() {
-  const [used, setUsed] = useState<number[]>([]);
-  useEffect(() => { try { setUsed(JSON.parse(localStorage.getItem("anniv-coupons") ?? "[]")); } catch { /* ignore */ } }, []);
-  const use = (i: number) => {
-    const n = [...used, i]; setUsed(n);
-    localStorage.setItem("anniv-coupons", JSON.stringify(n));
+  const [usedTitles, setUsedTitles] = useState<string[]>([]);
+  const list = useServerFn(listUsedCoupons);
+  const redeem = useServerFn(redeemCoupon);
+  useEffect(() => { list().then(setUsedTitles).catch(() => {}); }, [list]);
+  const used = COUPONS.map((c, i) => (usedTitles.includes(c.t) ? i : -1)).filter((i) => i >= 0);
+  const use = async (i: number) => {
+    const t = COUPONS[i]?.t; if (!t) return;
+    setUsedTitles((u) => [...u, t]);
+    try { await redeem({ data: { title: t } }); setUsedTitles(await list()); } catch { setUsedTitles((u) => u.filter((x) => x !== t)); }
   };
   return (
     <section className="px-5">
@@ -294,6 +294,7 @@ export function EasterEggs() {
   return (
     <>
       <button aria-label="พุดดิ้ง" onClick={() => setOpen(true)} className="fixed bottom-2 left-2 z-30 opacity-60"><PuddingIcon className="h-7 w-7" /></button>
+      <Link to="/admin" aria-label="เจ้าของเว็บ" className="fixed bottom-2 right-2 z-30 text-xs opacity-20">🔑</Link>
       <button aria-label="ปลาหมึกน้อย" onClick={() => setOpen(true)} className="fixed right-2 top-2 z-30 opacity-60"><OctopusIcon className="h-7 w-7" /></button>
       {open && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-foreground/40 p-6" onClick={() => setOpen(false)}>
